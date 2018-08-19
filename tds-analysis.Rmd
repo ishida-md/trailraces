@@ -25,13 +25,14 @@ count_all <- nrow(tds2017)
 `r count_all` racers started, and `r count_fin` races finished (`r format(count_fin / count_all * 100, digits = 1)` %)
 
 ```{r}
-tds2017 %>% group_by(sex) %>% 
+tds_summary <- tds2017 %>% group_by(sex) %>% 
   summarize(n_finisher = sum(finished, na.rm = T), 
             n = n(), 
             finish_rate = n_finisher / n * 100, 
             time_min = pretty_time(min(Finish, na.rm = T)), 
             time_median = pretty_time(median(Finish, na.rm = T)), 
             time_max = pretty_time(max(Finish, na.rm = T)))
+tds_summary
 ```
 
 ```{r}
@@ -53,6 +54,24 @@ ggplot(tds2017, aes(Finish)) + geom_histogram(binwidth = 1800) + scale_x_continu
 tds2017 <- tds2017 %>% mutate(tier = cut(Finish, breaks = seq(21.5 * 3600, 33.5 * 3600, by = 3600), 
                                          label = paste0(22:33, "h")))
 
-tds2017 %>% filter(!is.na(tier)) %>% group_by(tier) %>% summarize_at(5:21, median, na.rm = T) %>% mutate_at(2:18, pretty_time)
+timetable <- tds2017 %>% filter(!is.na(tier)) %>% group_by(tier) %>% summarize_at(5:21, median, na.rm = T)
+timetable2 <- timetable %>% mutate_at(2:18, pretty_time)
+
+timetable2
+```
+
+```{r}
+timetable_clock <- timetable %>% 
+  mutate_at(2:18, `+`, 3600 * 6) %>% 
+  mutate_at(2:18, `%%`, (3600 * 24)) %>% 
+  mutate_at(2:18, pretty_time)
+
+timetable_clock
+```
+
+
+```{r eval=F}
+write_csv(timetable2, "output/tds2017-timetable.csv")
+write_csv(timetable_clock, "output/tds2017-clock.csv")
 ```
 
