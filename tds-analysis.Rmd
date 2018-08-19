@@ -1,0 +1,58 @@
+---
+title: "TDS timetable"
+output: html_notebook
+author: Yoshihiro Ishida
+date: 2018-08-19
+---
+
+```{r message=F}
+library(tidyverse)
+
+load("interim/tds-5years.Rdata")
+source("scripts/time-funs.R")
+```
+
+
+```{r}
+tds2017 <- tds_all$tds2017 %>% rename("Finish" = 21) %>%
+  mutate(finished = !is.na(Finish), 
+    sex = ifelse(str_detect(Cat, 'H$'), "male", ifelse(str_detect(Cat, 'F$'), "female", NA)))
+
+count_fin <- sum(!is.na(tds2017$Finish), na.rm = T)
+count_all <- nrow(tds2017)
+```
+
+`r count_all` racers started, and `r count_fin` races finished (`r format(count_fin / count_all * 100, digits = 1)` %)
+
+```{r}
+tds2017 %>% group_by(sex) %>% 
+  summarize(n_finisher = sum(finished, na.rm = T), 
+            n = n(), 
+            finish_rate = n_finisher / n * 100, 
+            time_min = pretty_time(min(Finish, na.rm = T)), 
+            time_median = pretty_time(median(Finish, na.rm = T)), 
+            time_max = pretty_time(max(Finish, na.rm = T)))
+```
+
+```{r}
+count_liveones <- function(record){
+  sum(!is.na(record), na.rm = T)
+}
+
+tds_live <- tds2017 %>% select(5:21) %>% map_int(count_liveones)
+
+live_df <- tibble(point = factor(names(tds_live), levels = names(tds_live)), n = tds_live)
+ggplot(live_df, aes(point, n, group = 0)) + geom_point() + geom_line() + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+```
+
+```{r}
+ggplot(tds2017, aes(Finish)) + geom_histogram(binwidth = 1800) + scale_x_continuous(breaks = pretty_seq(tds2017$Finish), label = pretty_time(pretty_seq(tds2017$Finish))) + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+```
+
+```{r}
+tds2017 <- tds2017 %>% mutate(tier = cut(Finish, breaks = seq(21.5 * 3600, 33.5 * 3600, by = 3600), 
+                                         label = paste0(22:33, "h")))
+
+tds2017 %>% filter(!is.na(tier)) %>% group_by(tier) %>% summarize_at(5:21, median, na.rm = T) %>% mutate_at(2:18, pretty_time)
+```
+
