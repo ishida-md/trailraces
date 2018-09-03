@@ -1,0 +1,31 @@
+---
+title: "SFMT2018"
+author: "Yoshihiro Ishida"
+date: '2018-09-03'
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r message=F}
+library(tidyverse)
+library(tabulizer)
+
+source("scripts/time-funs.R")
+load("interim/sfmt.RData")
+```
+
+
+```{r}
+sfmt2015 <- sfmt2015 %>% filter(!rank2015 %in% c("TO", "DNF", "DNS")) %>% mutate(class100k = cut(finish, breaks = seq(9.5, 22.5, by = 1) * 3600, label = paste0(10:22, "h")))
+
+sfmt2015_summary <- sfmt2015 %>% group_by(class100k) %>% summarize_at(vars(kurohime:finish), median, na.rm = T)
+sfmt2015_clock <- sfmt2015_summary %>% mutate_at(vars(kurohime:finish), '+', 3600 * 5.5) %>% 
+  mutate_at(vars(kurohime:finish), pretty_time)
+sfmt2015_clock
+```
+
+```{r}
+write_csv(sfmt2015_clock, path = "output/sfmt-100k-pred.csv")
+```
+
