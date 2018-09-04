@@ -9,12 +9,17 @@ output:
 
 ```{r message=F}
 library(tidyverse)
-library(tabulizer)
+library(lubridate)
 
 source("scripts/time-funs.R")
 load("interim/sfmt.RData")
 ```
 
+
+## 110km time chart based on 2015 result
+
+__precaution__
+In 2015, Otomi-ko aid (15.1km after Kurohime) was operated instead of Sasagamine (11km after Kurohime). Therefore, any prediction at Otomi is 30-40 minutes behind what would be expected in the current race.
 
 ```{r}
 sfmt2015 <- sfmt2015 %>% filter(!rank2015 %in% c("TO", "DNF", "DNS")) %>% mutate(class100k = cut(finish, breaks = seq(9.5, 22.5, by = 1) * 3600, label = paste0(10:22, "h")))
@@ -29,8 +34,31 @@ sfmt2015_clock
 write_csv(sfmt2015_clock, path = "output/sfmt-100k-pred.csv")
 ```
 
+## 100 mile time chart generated from convoluted method
+
+1. extract runners who did both 2015 110km and 2017 100mile
+2. merge 2017 result (Start - Kurohime) and 2015 resulst (Kurohime - finish)
 
 ```{r} 
+sfmt2015_diff <- sfmt2015 %>% select(name_kana, kurohime:finish) %>% 
+  mutate_at(vars(otomi:finish), '-', .$kurohime) %>% select(-kurohime)
 
+both <- inner_join(sfmt2017, sfmt2015_diff, by = 'name_kana') %>% 
+  mutate_at(vars(otomi:finish), '+', .$kurohime) %>% 
+  filter(!is.na(kurohime) & rank2017 != "TO") %>% 
+  mutate(total_time = cut(finish, breaks = seq(19.5, 32.5, by = 1) * 3600, labels = c(paste0(20:32, 'h')))) %>% 
+  filter(!is.na(total_time))
+
+
+both_stat <- both %>% group_by(total_time) %>% summarize_at(vars(banff:finish), median, na.rm = T)
+both_clock <- both_stat %>% mutate_at(vars(banff:finish), '+', 19.5 * 3600 + 15 * 3600 * 24) %>% 
+  mutate_at(vars(banff:finish), seconds_to_period) %>% 
+  mutate_at(vars(banff:finish), str_extract, ".+M")
+
+both_clock
+```
+
+```{r eval = F}
+write_csv(both_clock, "output/sfmt-100m-pred.csv")
 ```
 
