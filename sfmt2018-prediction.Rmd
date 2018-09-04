@@ -25,7 +25,12 @@ sfmt2015_clock <- sfmt2015_summary %>% mutate_at(vars(kurohime:finish), '+', 360
 sfmt2015_clock
 ```
 
-```{r}
+```{r eval = F}
 write_csv(sfmt2015_clock, path = "output/sfmt-100k-pred.csv")
+```
+
+
+```{r} 
+
 ```
 
