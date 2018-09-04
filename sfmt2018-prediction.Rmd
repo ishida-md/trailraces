@@ -58,7 +58,7 @@ both_clock <- both_stat %>%
 
 both_clock
 
-both_clock2 <- both_clock %>% mutate_at(vars(banff:finish), as.character)
+both_clock2 <- both_clock %>% mutate_at(vars(banff:finish), as.character, format = '%m-%d %H:%M')
 ```
 
 ```{r eval = F}
