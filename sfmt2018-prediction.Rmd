@@ -57,9 +57,11 @@ both_clock <- both_stat %>%
   mutate_at(vars(banff:finish), '+', mile_start)
 
 both_clock
+
+both_clock2 <- both_clock %>% mutate_at(vars(banff:finish), as.character)
 ```
 
 ```{r eval = F}
-write_csv(both_clock, "output/sfmt-100m-pred.csv")
+write_csv(both_clock2, "output/sfmt-100m-pred.csv")
 ```
 
