@@ -49,11 +49,12 @@ both <- inner_join(sfmt2017, sfmt2015_diff, by = 'name_kana') %>%
   mutate(total_time = cut(finish, breaks = seq(19.5, 32.5, by = 1) * 3600, labels = c(paste0(20:32, 'h')))) %>% 
   filter(!is.na(total_time))
 
+mile_start <- as.POSIXct("2018-09-15 19:30:00")
 
 both_stat <- both %>% group_by(total_time) %>% summarize_at(vars(banff:finish), median, na.rm = T)
-both_clock <- both_stat %>% mutate_at(vars(banff:finish), '+', 19.5 * 3600 + 15 * 3600 * 24) %>% 
-  mutate_at(vars(banff:finish), seconds_to_period) %>% 
-  mutate_at(vars(banff:finish), str_extract, ".+M")
+both_clock <- both_stat %>% 
+  mutate_at(vars(banff:finish), as.difftime, units = 'secs') %>% 
+  mutate_at(vars(banff:finish), '+', mile_start)
 
 both_clock
 ```
