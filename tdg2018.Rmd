@@ -1,0 +1,84 @@
+---
+title: "TDG2018"
+output:
+  html_document:
+    df_print: paged
+author: Yoshihiro Ishida
+date: 2018-09-12
+---
+
+```{r setup, message=F}
+library(tidyverse)
+library(readxl)
+library(RANN)
+
+load("interim/tdg.RData")
+```
+
+__Motivation__
+
+> Hammerling D, Cefalu M, Cisewski J, Dominici F, Parmigiani G, Paulson C, Smith RL. Completing the results of the 2013 Boston marathon. PloS one. 2014 Apr 11;9(4):e93800.
+
+This paper inspired me to perform scaled KNN procedure on trail running races.
+
+
+## Transform 2017 TDG data to split times
+
+```{r}
+start2017 <- as.POSIXct("2017-09-10 10:20:00", tz = "UTC")
+
+tdg_formatted <- tdg2017 %>% mutate_at(vars(5:(ncol(.) - 1)), difftime, start2017, units = 'secs') %>% 
+  filter(!is.na(tdg2017_finish)) %>% select(-tdg2017_finish, -(`1`:PET)) %>% 
+  fill(-RUNNER)
+
+tdg_formatted[3:ncol(tdg_formatted)] <- tdg_formatted[3:ncol(tdg_formatted)] - tdg_formatted[2:(ncol(tdg_formatted) - 1)]
+
+tdg_formatted <- tdg_formatted %>% mutate_at(vars(-RUNNER), as.numeric)
+
+tdgmt <- as.matrix(tdg_formatted[3:ncol(tdg_formatted)])
+rownames(tdgmt) <- tdg_formatted$RUNNER
+
+tdg_formatted
+```
+
+## Format Taguchi-san's progress
+
+```{r}
+start2018 <- as.POSIXct("2018-09-09 12:00:00", tz = 'UTC')
+
+taguchi <- read_excel("input/tgd2018-taguchi.xlsx", col_names = c("point", "time"))
+
+taguchiv <- taguchi[["time"]]
+taguchiv <- difftime(taguchiv[2:length(taguchiv)], taguchiv[1:(length(taguchiv)-1)], units = 'secs')
+names(taguchiv) <- taguchi$point[-1]
+taguchiv <- taguchiv[!is.na(taguchiv)]
+
+taguchim <- matrix(taguchiv, nrow = 1)
+taguchim
+```
+
+## Perform scaled KNN estimation
+
+```{r}
+last_idx <- length(taguchiv)
+tdg_sub <- tdgmt[, 1:last_idx]
+
+nn_result <- nn2(tdg_sub, taguchim, k = 15)
+
+taguchi_nn <- tdg_sub[nn_result$nn.idx, ]
+
+taguchi_ratio <- rowSums(taguchi_nn) / sum(taguchim)
+
+taguchi_nn_full <- tdgmt[nn_result$nn.idx, ]
+taguchi_nn_scaled <- taguchi_nn_full / taguchi_ratio
+
+scaled_cum <- apply(taguchi_nn_scaled, 1, cumsum)
+projected <- apply(scaled_cum, 1, median)
+projected <- as.difftime(projected, units = 'secs')
+
+projected_clock <- projected + start2018
+names(projected_clock) <- names(projected)
+
+format(projected_clock[(last_idx + 1):length(projected_clock)], format = "%m-%d %H:%M")
+```
+
