@@ -1,0 +1,149 @@
+---
+title: "SFMT2018 - analysis"
+output: html_notebook
+date: 2018-09-22
+author: Yoshihiro Ishida
+---
+
+```{r setup}
+library(tidyverse)
+library(lubridate)
+
+load("interim/sfmt2018.RData")
+load("interim/utmf2018-fixed2.RData")
+source("scripts/time-funs.R")
+pd <- read_csv("input/sfmt2018-points.csv")
+
+
+start_time <- as.POSIXct("2018-09-15 19:30", tz = "Asia/Tokyo")
+```
+
+
+## General Stats
+
+```{r general stats}
+sfmt2018 <- sfmt2018 %>% mutate(is_finisher = ifelse(rank %in% c("DNF", "DNS", "TO"), rank, "finisher"), 
+                                is_finisher = ifelse(rank == "TO", "DNF", is_finisher)) %>%
+  select(rank:name_kana, sex, is_finisher, everything())
+
+sfmt2018_clock <- sfmt2018 %>% mutate_at(vars(-(rank:is_finisher)), '+', start_time)
+
+stat1 <- sfmt2018 %>% summarize(finished = sum(is_finisher == "finisher"), started = sum(rank != "DNS"), total = n(), `rate_finished(%)` = format(finished / started * 100, digits = 3)) %>% mutate(sex = "total")
+  
+stat2 <- sfmt2018  %>% group_by(sex) %>% summarize(finished = sum(is_finisher == "finisher"), started = sum(rank != "DNS"), total = n(), `rate_finished(%)` = format(finished / started * 100, digits = 3))
+
+bind_rows(stat2, stat1)
+```
+
+
+## % survival
+
+```{r}
+started <- stat1$started
+surviving <- sfmt2018 %>% select(-(rank:is_finisher)) %>% sapply(function(x) sum(!is.na(x)))
+
+surv_perc <- surviving / started
+
+surv_df <- tibble(point = factor(names(surviving), levels = names(surviving)), 
+                  n_surv = surviving) %>% left_join(pd)
+surv_df <- surv_df %>% add_case(point = "start", n_surv = stat1$started[1], dist = 0)
+
+ggplot(surv_df, aes(dist, n_surv, group = 1)) + geom_line() + geom_point() + 
+  scale_x_continuous(breaks = pd$dist, limits = c(0, 160)) +
+  scale_y_continuous(limits = c(0, 600)) + 
+  geom_text(aes(label = point, x = dist, y = n_surv), vjust = 1, hjust = 1) +
+  theme(panel.grid.minor = element_blank(), panel.grid.major.y = element_blank()) +
+  labs(x = "km", y = "# of runners in the race")
+```
+
+There is a steady decline in %surviving after APA. Significant drop is observed at Sasagamine.
+
+```{r}
+eval_surv <- function(point, close, window, int){
+  point <- enquo(point)
+
+  close <- as.POSIXct(close, tz = "Asia/Tokyo")
+  
+  prior <- surv_df$n_surv[surv_df$point == "finish"] / surv_df$n_surv[surv_df$point == quo_name(point)]
+  lab <- seq(close - hours(window), close - period(int), by = int)
+  lab <- paste0(format(lab, format = "%H:%M"), "-", format(lab + period(int), format = "%H:%M"))
+  
+  sfmt2018_proc <- sfmt2018_clock %>% 
+    filter(!!point <= close & (!!point >= (close - hours(window)))) %>% 
+    mutate(tz = cut(!!point, breaks = int, labels = lab))
+  
+  post_surv <- sfmt2018_proc %>% group_by(tz) %>% 
+    summarize(total = n(), finished = sum(is_finisher == "finisher"), rate_surv = finished / total)
+  
+  ggplot(post_surv, aes(tz, rate_surv, group = 1)) +
+    geom_hline(yintercept = prior, color = 'pink', size = 2) +
+    geom_point() + geom_line() + 
+    theme(axis.text.x = element_text(angle = 30, vjust = 0.5), axis.title.x = element_blank()) +
+    labs(title = paste0(str_to_title(quo_name(point)), " (Gate closes at ", format(close, format = "%H:%M"), ")"))
+}
+```
+
+## APA hotel gate close is unusually late
+
+```{r}
+eval_surv(apa, "2018-09-16 07:30", 4, "15 mins")
+```
+
+Runners are encouraged to pass the gate 3 hrs prior to the close.
+
+## Survival after shizen
+
+```{r}
+eval_surv(shizen, "2018-09-16 10:00", 4, "15 mins")
+```
+
+Runners are encouraged to pass 2.5hrs prior to the close.
+
+
+## Survival after kurohime
+
+```{r}
+p_kurohime <- eval_surv(kurohime, "2018-09-16 15:30", 3, "10 mins")
+p_kurohime
+```
+
+Racers who did not pass the gate 1.5 hour prior to the close is unlikely to finish the race.
+
+## Survival after Togakushi
+
+```{r}
+eval_surv(togakushi, "2018-09-17 00:00", 1, "10 mins")
+```
+
+## Comparison with UTMF2018
+
+```{r}
+utmf2018_finish <- utmf2018_all %>% select(name, utmf = Finish)
+
+both <- sfmt2018 %>% select(name, sfmt = finish) %>%
+  mutate(sfmt = as.numeric(sfmt, units = 'secs')) %>% 
+  inner_join(utmf2018_finish)
+
+ggplot(both, aes(utmf, sfmt)) + geom_point() + 
+  geom_quantile(quantiles = c(0.1, 0.5, 0.9)) +
+  scale_x_continuous(breaks = pretty_seq(both$utmf, 7200), label = pretty_time(pretty_seq(both$utmf, 7200))) +
+  scale_y_continuous(breaks = pretty_seq(both$sfmt, 7200), label = pretty_time(pretty_seq(both$sfmt, 7200)))
+```
+
+```{r}
+utmf_int <- pretty_seq(both$utmf, 3600)
+utmf_int2 <- c(seq(23 * 3600, 35 * 3600, 4 * 3600), seq(36 * 3600, 46 * 3600, 3600))
+
+both <- both %>% 
+  mutate(tz = cut(utmf, breaks = utmf_int, labels = paste0(pretty_time(utmf_int[-length(utmf_int)]), "-")),
+         tz2 = cut(utmf, breaks = utmf_int2, labels = paste0(pretty_time(utmf_int2[-length(utmf_int2)]), "-")))
+
+both_stat <- both %>% group_by(tz) %>% summarise(total = n(), finished = sum(!is.na(sfmt)), rate_finished = finished / total)
+
+ggplot(both_stat, aes(tz)) + geom_col(aes(y = total)) + geom_col(aes(y = finished), fill = 'pink') + theme(axis.text.x = element_text(angle = 30))
+
+both_stat2 <- both %>% group_by(tz2) %>% summarise(total = n(), finished = sum(!is.na(sfmt)), rate_finished = finished / total)
+
+ggplot(both_stat2, aes(tz2, rate_finished)) + geom_point() + geom_line(aes(group = 1)) + theme(axis.text.x = element_text(angle = 30)) + labs(x = "UTMF2018 time", y = "SFMT2018 finish rate")
+```
+
