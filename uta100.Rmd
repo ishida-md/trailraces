@@ -1,19 +1,23 @@
 ---
-title: "UTA100"
-output: html_notebook
+title: "Ultra Trail Australia 100"
+output:
+  pdf_document: default
+  html_notebook: default
+  html_document:
+    df_print: paged
+author: Yoshihiro Ishida
+date: 2018-12-29
 ---
 
-```{r setup}
+```{r setup, warning=FALSE,message=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 library(tabulizer)
 library(tidyverse)
 library(lubridate)
 
 source("scripts/time-funs.R")
-```
 
-
-```{r cache=TRUE}
-uta100_raw <- tabulizer::extract_tables("input/uta_2018_classement_UTA100_scratch.pdf") 
+load("interim/uta100.RData")
 ```
 
 
@@ -33,7 +37,7 @@ jpn <- uta100 %>% filter(country == "Japanese")
 ```
 
 ```{r}
-uta_scale <- pretty_seq(uta100$time)
+uta_scale <- pretty_seq(uta100$time, 7200)
 ggplot(uta100, aes(time)) + geom_histogram(binwidth = 1800) + geom_vline(xintercept = 14 * 3600, color = 'red') + scale_x_continuous(breaks = uta_scale, labels = pretty_time(uta_scale)) + theme_bw()
 ```
 
@@ -59,14 +63,48 @@ deconvolute_names <- function(nms){
 
 utmf2018_simple <- utmf2018_all %>% select(name_en, Finish)
 
-utmf2018_simple <- utmf2018_simple %>% mutate(name_vec = deconvolute_names(name_en))
-uta100 <- uta100 %>% mutate(name_vec = deconvolute_names(name))
+utmf2018_simple <- utmf2018_simple %>% mutate(name_clean = deconvolute_names(name_en))
+uta100 <- uta100 %>% mutate(name_clean = deconvolute_names(name))
 
-both_races <- uta100 %>% inner_join(utmf2018_simple, by = "name_vec", suffix = c("uta", "utmf"))
+both2018 <- uta100 %>% inner_join(utmf2018_simple, by = "name_clean", suffix = c("uta", "utmf"))
 
 uta_scale2 <- seq(0, 24, 2) * 3600
 
-ggplot(both_races, aes(Finish, time)) + geom_point() + geom_smooth(method = "glm") + scale_y_continuous(limits = c(0, 24) * 3600, breaks = uta_scale2, labels = pretty_time(uta_scale2)) + 
+ggplot(both2018, aes(Finish, time)) + geom_hline(yintercept = 14 * 3600, color = 'red') + geom_point() + geom_smooth(method = "glm") + scale_y_continuous(limits = c(0, 24) * 3600, breaks = uta_scale2, labels = pretty_time(uta_scale2)) + 
   scale_x_continuous(breaks = seq(20, 46, 2) * 3600, labels = pretty_time(seq(20, 46, 2) * 3600))
 ```
 
+`r nrow(both2018)` people participated in both UTA2018 and UTMF2018. There is a liniear correlation between the finish times of the two races. To finish UTA2018 within 14hrs, one has to be 'below 35hr UTMF finisher'.
+
+```{r}
+load("interim/uta2017.RData")
+
+uta2017 <- uta2017 %>% mutate(name_clean = deconvolute_names(name))
+
+both2017 <- uta2017 %>% inner_join(utmf2018_simple, by = "name_clean")
+
+ggplot(both2017, aes(Finish, time)) + geom_hline(yintercept = 14 * 3600, color = 'red') + geom_point() + geom_smooth(method = "glm") + scale_y_continuous(limits = c(0, 24) * 3600, breaks = uta_scale2, labels = pretty_time(uta_scale2)) + 
+  scale_x_continuous(breaks = seq(20, 46, 2) * 3600, labels = pretty_time(seq(20, 46, 2) * 3600))
+```
+
+```{r}
+both2017 <- both2017 %>% mutate(year = "uta2017")
+both2018 <- both2018 %>% mutate(year = "uta2018")
+
+both_merged <- bind_rows(both2017, both2018)
+
+ggplot(both_merged, aes(Finish, time, color = year)) + geom_hline(yintercept = 14 * 3600, color = 'red') + geom_point() + geom_smooth(method = "glm") + scale_y_continuous(limits = c(0, 24) * 3600, breaks = uta_scale2, labels = pretty_time(uta_scale2)) + 
+  scale_x_continuous(breaks = seq(20, 46, 2) * 3600, labels = pretty_time(seq(20, 46, 2) * 3600))
+```
+
+Regression result looks almost identical between 2018 and 2017. Apparently, short spacing between the two races did not matter for those who run both utmf2018 and uta2018. It would be safe to merge the two data to land on the final prediction model.
+
+```{r}
+ggplot(both_merged, aes(Finish, time)) + geom_hline(yintercept = 14 * 3600, color = 'red') + geom_point(aes(color = year)) + geom_smooth(method = "glm") + scale_y_continuous(limits = c(0, 24) * 3600, breaks = uta_scale2, labels = pretty_time(uta_scale2)) + 
+  scale_x_continuous(breaks = seq(20, 46, 2) * 3600, labels = pretty_time(seq(20, 46, 2) * 3600))
+```
+
+```{r}
+mod <- lm(time ~ Finish, data = both_merged)
+summary(mod)
+```
