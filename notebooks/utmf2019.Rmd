@@ -1,0 +1,81 @@
+---
+title: "UTMF2019"
+output:
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+
+```{r setup}
+library(tidyverse)
+
+utmf2019 <- readRDS("../interim/utmf2019_formatted.RDS")
+utmf2019_long <- readRDS("../interim/utmf2019_long.RDS")
+load("../interim/utmf2018-fixed2.RData")
+
+source("../scripts/time-funs.R")
+```
+
+### Proper Finishers
+
+```{r}
+n_started <- sum(!is.na(utmf2019$W))
+
+n_finished <- sum(!is.na(utmf2019$Finish))
+perc_finished <- n_finished / n_started * 100
+
+range_finished <- range(utmf2019$Finish, na.rm = TRUE)
+```
+
+`r n_finished` runners (`r format(perc_finished, digits = 3)` %) reached the finish line. Finish time ranged between `r prettify_time(range_finished)`
+
+### Percent in race
+
+```{r}
+utmf2019_stat <- utmf2019_long %>% group_by(point, cum_dist) %>% 
+  summarise(n_passed = sum(!is.na(cum_time)), 
+            perc_passed = n_passed / n_started * 100)
+utmf2019_stat <- utmf2019_stat %>%
+  filter(point %in% c(paste0("A", 1:7, " IN"), "A8 OUT", "A9 IN", "Finish")) %>% 
+  ungroup() %>% 
+  add_case(point = 'Start', cum_dist = 0, n_passed = n_started, perc_passed = 100) %>% 
+  arrange(cum_dist)
+
+knitr::kable(utmf2019_stat, digits = 1)
+```
+
+
+```{r}
+ggplot(utmf2019_stat, aes(cum_dist, perc_passed)) + geom_point() + geom_line() +
+  scale_x_continuous(breaks = utmf2019_stat$cum_dist, labels = utmf2019_stat$point)
+```
+
+Overall 'Finish' rate is 78.5%. This is better than 2018 (72%)
+
+#### Comparison with 2018
+
+```{r}
+utmf2018_compact <- utmf2018_all %>% dplyr::select(name_en, Start:Finish) %>% mutate(name_en = str_to_upper(name_en))
+both <- utmf2018_compact %>% inner_join(utmf2019, by = c("name_en" = "name"), suffix = c("_2018", "_2019"))
+```
+
+`r nrow(both)` runners participated in these two consecutive years.
+
+```{r}
+both_finished <- both %>% filter(!is.na(Finish_2018) & !is.na(Finish_2019))
+
+breaks_x <- pretty_seq(both_finished$Finish_2018, 7200)
+breaks_y <- pretty_seq(both_finished$Finish_2019, 7200)
+
+ggplot(both_finished, aes(Finish_2018, Finish_2019))  + geom_abline(intercept = 0, slope = 1, color = 'blue')+ geom_point() + scale_x_continuous(breaks = breaks_x, labels = prettify_time(breaks_x)) + scale_y_continuous(breaks = breaks_y, labels = prettify_time(breaks_y)) + coord_fixed()
+```
+
+```{r}
+ggplot(both, aes(`A5 IN_2018`, `A5 IN_2019`))  + geom_abline(intercept = 0, slope = 1, color = 'blue') + geom_point() + coord_fixed()
+```
+
+```{r}
+ggplot(both, aes(`A6 IN_2018`, `A6 IN_2019`))  + geom_abline(intercept = 0, slope = 1, color = 'blue') + geom_point()
+```
+
