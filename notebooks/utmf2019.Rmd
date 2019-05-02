@@ -53,6 +53,24 @@ ggplot(utmf2019_stat, aes(cum_dist, perc_passed)) + geom_point() + geom_line() +
 
 Overall 'Finish' rate is 78.5%. This is better than 2018 (72%)
 
+#### Running sub22
+
+```{r}
+finish_seq <- pretty_seq(utmf2019$Finish)
+
+sub22 <- utmf2019 %>% filter(Finish < 22 * 3600)
+
+ggplot(utmf2019, aes(Finish)) + geom_histogram(binwidth = 1800) + geom_histogram(data = sub22, fill = 'pink', binwidth = 1800) + scale_x_continuous(breaks = finish_seq, labels = prettify_time(finish_seq))
+```
+
+Only 5 people finished under 22H.
+
+```{r}
+summary(sub22$`A1 OUT` - sub22$`A1 IN`)
+summary(sub22$`A1 OUT`)
+```
+
+
 #### Comparison with 2018
 
 ```{r}
